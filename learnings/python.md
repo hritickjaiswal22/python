@@ -137,4 +137,98 @@ pip install requests               # now installs locally
 python -c "import requests; print(requests.__version__)"
 ```
 
-You're now set up. Want to move on to the first API call script?
+# Types in python
+
+**Python has type hints, but they are NOT validated at runtime.**
+
+Just like TypeScript, Python's built-in type hints are **erased at runtime**. They are purely for developers, IDEs (like VS Code), and static type checkers (like `mypy` or `pyright`). They do not magically validate the API response shape.
+
+To get actual **runtime validation** (like Zod or io-ts in the JS world), you need a third-party library. The industry standard for this in Python is **Pydantic**.
+
+Here is how you go from your current script to a fully typed, validated API client.
+
+### Step 1: Basic Type Hints (The "TypeScript" way)
+
+You can annotate your variables without installing anything. It won't validate anything, but it gives you autocomplete in VS Code.
+
+```python
+import requests
+from typing import Any
+
+res: requests.Response = requests.get("https://jsonplaceholder.typicode.com/posts/1")
+print(res.status_code)
+print(res.headers["content-type"])
+
+# We tell Python this is a dictionary. It won't check if it's true.
+data: dict[str, Any] = res.json()
+print(data["title"]) # VS Code will autocomplete "title" if it's typed as dict
+```
+
+This is exactly like writing `const data: any = await res.json()` in TS. It's a lie until you validate it.
+
+---
+
+### Step 2: Runtime Validation with Pydantic (The "Zod" way)
+
+Pydantic is the Python equivalent of Zod. You define a class (like an interface), and it will actually **parse and validate** the incoming data at runtime. If the API returns a string where a number should be, Pydantic throws an error.
+
+First, install it in your `.venv`:
+
+```bash
+pip install pydantic
+```
+
+Now, refactor your code:
+
+```python
+import requests
+from pydantic import BaseModel, ValidationError
+
+# 1. Define the expected shape (like a TS interface)
+class Post(BaseModel):
+    userId: int
+    id: int
+    title: str
+    body: str
+
+# 2. Make the request
+res = requests.get("https://jsonplaceholder.typicode.com/posts/1")
+raw_data = res.json()
+
+# 3. Validate and parse the data!
+try:
+    post = Post.model_validate(raw_data)  # <-- This does the actual validation
+    print(f"Success! Title: {post.title}")
+    print(f"Body: {post.body}")
+
+    # Note: `post` is now an object, not a dictionary!
+    # You use dot notation (post.title) instead of bracket notation (raw_data["title"])
+
+except ValidationError as e:
+    print("API returned the wrong shape!")
+    print(e.json())
+
+```
+
+### The Key Differences (TS vs. Python)
+
+| Feature                  | TypeScript                      | Python (Built-in) | Python (Pydantic)                |
+| :----------------------- | :------------------------------ | :---------------- | :------------------------------- |
+| **Syntax**               | `interface Post { id: number }` | `dict[str, Any]`  | `class Post(BaseModel): id: int` |
+| **Runtime Validation?**  | ❌ No (erased)                  | ❌ No (erased)    | ✅ **Yes**                       |
+| **Throws on bad data?**  | N/A                             | ❌ No             | ✅ **Yes** (`ValidationError`)   |
+| **Output object**        | Plain JS object                 | `dict`            | **Class instance** (`post.id`)   |
+| **Ecosystem Equivalent** | Zod / io-ts                     | None              | **Pydantic**                     |
+
+### Why this matters for API calling
+
+In TypeScript, you use Zod to validate `fetch` responses because TypeScript can't.
+In Python, you use Pydantic to validate `requests` responses because Python's built-in hints can't.
+
+If you look at almost any modern Python backend (FastAPI) or SDK (OpenAI, Anthropic), they are built entirely on Pydantic models. It is the de facto standard for data validation in Python.
+
+### Your next move:
+
+1. Run `pip install pydantic`
+2. Add the `Post` class to your `api.py`
+3. Try changing the URL to `/posts/1` but intentionally break the model (e.g., change `id: int` to `id: str`) to see the `ValidationError` in action. That's the magic of runtime validation!
