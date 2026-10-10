@@ -1,4 +1,5 @@
-import requests
+import httpx
+import asyncio
 from pydantic import BaseModel, ValidationError
 
 class Post(BaseModel):
@@ -7,14 +8,10 @@ class Post(BaseModel):
     title: str
     body: str
 
-res = requests.get("https://jsonplaceholder.typicode.com/posts/1")
-rawData = res.json()
+async def main():
+    async with httpx.AsyncClient() as client:
+        res = await client.get("https://jsonplaceholder.typicode.com/posts/1")
+        post = Post.model_validate(res.json())
+        print(post)
 
-try:
-    post = Post.model_validate(rawData)
-    print(f"Success! Title: {post.title}")
-    print(f"Body: {post.body}")
-    
-except ValidationError as e:
-    print("API returned the wrong shape!")
-    print(e.json())
+asyncio.run(main())
